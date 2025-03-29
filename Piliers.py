@@ -2,7 +2,10 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import Dict
+from typing import Dict, Tuple
+from strategies import Strategy, Momentum
+
+
 class Pilier:
 
     METHODS_LABELS = ["discret","continu"]
@@ -44,6 +47,59 @@ class Pilier:
         returns: pd.DataFrame = resampled_data.pct_change().dropna() if self.method == 'discret' else np.log(resampled_data).diff().dropna()
         return returns
     
+    def build_portfolio(self, strategy: str = "Momentum", calculation_window: int = 12, rebalancing_frequency: int = 1, isEquiponderated: bool = False) -> pd.DataFrame:
+        """
+        Calcul des positions de la stratégie. Le fonctionnement est le suivant : 
+            - On met à jour le jeu de données passé en paramètre de la fonction "get_position" de la stratégie en fonction
+                de la fréquence de rebalancement et de la fenêtre de calcul. Par exemple, si on veut du Momentum sur les rendements
+                des 12 derniers mois, avec rebalancement mensuel et qu'on a une périodicité mensuelle, on va récupérer les rendements 
+                des 12 derniers mois et les passer en argument. 
+            - On récupère, à chaque date de rebalancement, les positions ainsi calculées (entre deux dates de rebalancement, les positions restent les mêmes).
+        Le résultat renvoyé est un dataframe contenant les positions par actif à chaque date. 
+        """
+        # On initialise le dataframe de positions
+        positions: pd.DataFrame = pd.DataFrame(0.0, index = self.returns[self.periodicity].index, columns= self.returns[self.periodicity].columns)
+        # On récupère le nombre de rendements disponibles
+        length: int = self.returns[self.periodicity].shape[0]
+        # Boucle : on commence a minima au nombre de rendement nécessaire pour la fenêtre de calcul, et on avance ensuite 
+        # par pas égal à la fréquence de rebalancement
+        for idx in range(calculation_window, length, rebalancing_frequency):
+            # Le premier index = idx - fenêtre de calcul (pour avoir, par exemple, les rendements des 12 DERNIERS mois)
+            begin_idx = idx - calculation_window
+            # Fréquence de rebalancement : si on n'a pas assez de rendements à la fin, on ne prend que les rendements restants
+            correct_frequency = rebalancing_frequency  if (length - idx > rebalancing_frequency) else (length - idx)
+            # Ajout des positions
+            if strategy.lower() == "momentum":
+                strategy_instance = Momentum(self.returns[self.periodicity].iloc[begin_idx:idx,:], isEquiponderated) 
+            positions.iloc[idx: idx + correct_frequency, :] = strategy_instance.get_position()
+        return positions
+    
+    def compute_portfolio_value(self, positions: pd.DataFrame, initial_value: float = 100.0) -> pd.Series:
+        # Vérifications élémentaires
+        if not positions.index.equals(self.returns[self.periodicity].index) or not positions.columns.equals(self.returns[self.periodicity].columns):
+            raise ValueError("Les indices ou colonnes de `positions` et `data` ne correspondent pas.")
+        if self.returns[self.periodicity].isna().any().any():
+            raise ValueError("Les données contiennent des NaN. Vérifiez les entrées dans `self.data`.")
+        if positions.isna().any().any():
+            raise ValueError("Les positions contiennent des NaN. Vérifiez les entrées dans `positions`.")
+    
+        portfolio_value = pd.Series(index=self.returns[self.periodicity].index, dtype=float)
+        portfolio_value.iloc[0] = initial_value  # La valeur initiale du portefeuille
+    
+        for t in range(1, len(positions)):  # On commence à t=1 car nous avons besoin des rendements de t
+            # Si toutes les positions sont nulles, on conserve la valeur précédente (initiale)
+            if (positions.iloc[t-1] == 0).all():
+                portfolio_value.iloc[t] = portfolio_value.iloc[t-1]
+            else:
+                asset_returns = self.returns[self.periodicity].iloc[t]
+                weighted_returns = (positions.iloc[t-1] * asset_returns).sum()
+                portfolio_value.iloc[t] = portfolio_value.iloc[t-1] * (1 + weighted_returns)
+    
+        # Mise à jour des valeurs de marché
+        self.portfolio_value = portfolio_value
+        return portfolio_value
+
+
     def heatmap_correlations(self, annot: bool =True, cmap: str='coolwarm', vmin: float =-1, vmax: float =1) -> None:
         """
         Affiche la matrice de corrélation des rendements (pour la périodicité donnée à l'instanciation)
@@ -89,9 +145,9 @@ data = pd.read_excel("Inputs.xlsx", sheet_name= "Actions").set_index("Date")
 cols_with_na = [col for col in data.columns if data[col].isnull().sum() != 0]
 data[cols_with_na] = data[cols_with_na].interpolate(method = 'linear')
 
-x = Pilier(data, "daily", "discret")
+x = Pilier(data, "monthly", "discret")
 
 x.plot_cumulative_returns()
-
-
-
+pos = x.build_portfolio()
+pos.to_excel("test positions Momentum.xlsx")
+x.compute_portfolio_value(pos, 100).to_excel("Ptf value.xlsx")
