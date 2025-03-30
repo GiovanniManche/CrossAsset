@@ -1,0 +1,8 @@
+pandas
+numpy
+scipy.optimize
+matplotlib.pyplot
+seaborn
+typing
+datetime
+dateutil.relativedelta

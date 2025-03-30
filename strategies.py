@@ -52,6 +52,5 @@ class Momentum(Strategy):
             else:
                 ranks = signals_momentum.rank(method="max", ascending=True).astype(float)
                 weights.loc[weights.index[0], ranks.index] = ranks / ranks.sum()
-
         return weights
             
