@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 import datetime as datetime
+
+from aiohttp.web_routedef import static
 from dateutil.relativedelta import relativedelta
 from operator import add
 
@@ -8,7 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import Dict, Tuple
 
-from src.classes.Strategies import Strategy, Momentum, Momentum2
+from src.classes.Strategies import Strategy, Momentum, Momentum2, CoreEquity
 
 
 class Portfolio:
@@ -24,6 +26,9 @@ class Portfolio:
     PERIODICITY_LABELS = [DAILY_LABEL, WEEKLY_LABEL, MONTHLY_LABEL, QUARTERLY_LABEL, YEARLY_LABEL]
     STRAT_LABELS = ["momentum", "low Vol"]
     WEIGHTING_LABELS = ["equalweight", "ranking"]
+
+    EQUITY_LABEL = "equity"
+    BOND_LABEL = "bond"
     
     """
     Classe qui s'occupe des différentes métriques et de la composition des portefeuilles pour chaque pilier.
@@ -32,9 +37,13 @@ class Portfolio:
         - periodicity : période pour le calcul des rendements (daily, weekly, monthly, quarterly, yearly)
         - rebalancement : fréquence pour le calcul de la date de rebalancement
         - method : méthode pour le calcul des rendements (discret, continu)
+        - list_strat : liste des stratégies à appliquer dans la poche d'alpha
+        - list_weighting : liste des schémas de pondération à appliquer pour chaque stratégie de la poche d'alpha
+        - calculation_window : taille de la fenêtre à utiliser pour les stratégies d'alpha
+        - asset_class : classe d'actif pour laquelle on effectue le backtest (equity, bond, ...)
     """
     def __init__(self, data:pd.DataFrame, periodicity: str, rebalancement:str, method:str,
-                 list_strat:list, list_weighting:list, calculation_window:int):
+                 list_strat:list, list_weighting:list, calculation_window:int, asset_class:str):
 
         # Vérifications de cohérence
         if periodicity.lower() not in Portfolio.PERIODICITY_LABELS:
@@ -47,14 +56,15 @@ class Portfolio:
             raise Exception("Les listes contenant les stratégies à mettre en oeuvre et les scémas de pondération associés "
                             "ne peuvent pas être vides")
 
-        self.benchmark: pd.DataFrame = data.iloc[:, :1]
-        self.asset_prices:pd.DataFrame =  data.iloc[:,1:]
-        self.log_asset_prices: pd.DataFrame = self.calc_log_prices() # Récupération des prix logarithmiques
-
         self.rebalancement: str = rebalancement
         self.periodicity: str = periodicity.lower()
         self.method: str = method.lower()
         self.calculation_window:int = calculation_window
+        self.asset_class: str = asset_class
+
+        self.benchmark: pd.DataFrame = self.get_bench(data)
+        self.asset_prices:pd.DataFrame =  data.iloc[:,1:]
+        self.log_asset_prices: pd.DataFrame = self.calc_log_prices() # Récupération des prix logarithmiques
 
         # Récupération des deux listes
         self.list_strategies:list = list_strat
@@ -95,6 +105,23 @@ class Portfolio:
         logarithmes pour la strat (permet d'atténuer les variations extrêmes)
         """
         return np.log10(self.asset_prices)
+
+    def get_bench(self, data:pd.DataFrame):
+        """
+        Méthode permettant de récupérer le benchmark selon
+        la périodicité souhaitée par l'utilisateur
+        """
+        period_resampling: dict = {
+            "daily": None,
+            "weekly": 'W-FRI',
+            "monthly": 'ME',
+            "quarterly": 'QE',
+            "yearly": 'YE'
+        }
+        bench: pd.DataFrame = data.iloc[:, :1]
+        resampled_bench: pd.DataFrame = bench if period_resampling[self.periodicity] is None else (
+            bench.resample(period_resampling[self.periodicity]).last())
+        return resampled_bench
 
     def rebalancing_date(self, prec_date:datetime = None) -> datetime:
         """
@@ -186,8 +213,51 @@ class Portfolio:
         positions = positions.iloc[self.calculation_window:, ]
         return positions
 
+    def compute_ptf_weight(self, returns_to_use:pd.DataFrame, list_strategies:list, list_weighting:list) -> list:
+        """
+        Méthode permettant de générer les poids d'un portefeuille
+        à une date t à partir des poids générés par deux poches différentes:
+        - une allocation coeur avec exposition au beta de plusieurs grands marchés
+        - une allocation ayant pour objectif de générer de l'alpha
+
+        Hypothèse : Le coeur du portefeuille représente 60% du portefeuille final
+
+        arguments :
+        - list_strategies : liste contenant les stratégies à appliquer au sein du portefeuille d'alpha
+        - list_weighting : liste contenant les schémas de pondérations à appliquer au sein du portefeuille d'alpha
+        """
+        if len(list_strategies) != len(list_weighting):
+            raise Exception("Chaque stratégie d'alpha à appliquer doit avoir un schéma de pondération associé")
+
+        # Liste pour stocker les poids du portefeuille
+        list_weights_ptf: list = [0] * returns_to_use.shape[1]
+
+        # Pondération des deux allocations au sein du portefeuille
+        core_scaling_factor: float = 0.6
+        div_scaling_factor: float = 0.4
+
+        # Etape 1 : Récupération des poids pour le Coeur de portefeuille
+        # Cas d'une allocation Equity
+        if self.asset_class == Portfolio.EQUITY_LABEL:
+            core_strat_instance: CoreEquity = CoreEquity(returns_to_use)
+            list_core_weights: list = core_strat_instance.get_position()
+        # Cas  d'une allocation Bond
+        # Autres cas
+        else:
+            raise Exception("To be implemented")
+
+
+        # Etape 2 : Récupération des poids de la poche de diversification
+        list_div_weights: list = self.compute_ptf_weight_div(returns_to_use, list_strategies, list_weighting)
+
+        # Etape 3 : Calcul des poids du portefeuille
+        for i in range(len(list_weights_ptf)):
+            list_weights_ptf[i] = core_scaling_factor * list_core_weights[i] + div_scaling_factor * list_div_weights[i]
+
+        return list_weights_ptf
+
     @staticmethod
-    def compute_ptf_weight(returns_to_use:pd.DataFrame, list_strategies:list, list_weighting:list) -> list:
+    def compute_ptf_weight_div(returns_to_use:pd.DataFrame, list_strategies:list, list_weighting:list) -> list:
         """
         Méthode permettant de générer les poids d'un portefeuille
         à une date t à partir des poids générés par plusieurs stratégies.
@@ -199,9 +269,6 @@ class Portfolio:
         - list_strategies : liste contenant les stratégies à appliquer au sein du portefeuille
         - list_weighting : liste contenant les schémas de pondérations à appliquer au sein du portefeuille
         """
-        if len(list_strategies) != len(list_weighting):
-            raise Exception("Chaque stratégie à appliquer doit avoir un schéma de pondération associé")
-
         # pondération de chaque stratégie dans le portefeuille
         scaling_factor:float = 1.0 / len(list_strategies)
 
@@ -229,7 +296,6 @@ class Portfolio:
             # Ajouter un cas pour chaque stratégie
             else:
                 raise Exception("To be implemented")
-
             if len(list_weight_strat) != len(list_weights_ptf):
                 raise Exception("Les séries de poids générés par les stratégies / le portefeuille doivent avoir la même longueur")
 
@@ -239,9 +305,6 @@ class Portfolio:
 
         return list_weights_ptf
 
-    """
-    a discuter avec le prof
-    """
     def compute_portfolio_derive(self, idx:int, list_prec_weights:list) -> list:
         """
         Méthode permettant de calculer la dérive des poids
@@ -334,6 +397,7 @@ class Portfolio:
         plt.axhline(y=1, color="red", linestyle="--", alpha=0.3)
         plt.tight_layout()
         plt.show()
+
     """
     old
     """

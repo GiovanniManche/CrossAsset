@@ -25,6 +25,7 @@ class Metrics():
         self.bench: pd.DataFrame = benchmark
         self.method: str = method
         self.frequency: str = frequency
+        self.returns: pd.DataFrame = self.compute_returns(self.nav)
         self.annualization_factor: int = self.compute_annualization_factor()
 
     def compute_annualization_factor(self):
@@ -60,8 +61,15 @@ class Metrics():
         }
         resampled_data: pd.DataFrame = nav if period_resampling[self.frequency] is None else nav.resample(
             period_resampling[self.frequency]).last()
+
+        # Ajout de la première donnée de la période pour calculer les rendements sur la première année
+        first_date: pd.DataFrame = self.nav.head(1)
+        resampled_data = pd.concat([first_date, resampled_data[:]]).reset_index(drop = True)
+
+        # Calcul des rendements
         returns: pd.DataFrame = resampled_data.pct_change().dropna() if self.method == "discret" else np.log(
             resampled_data).diff().dropna()
+
         return returns
 
     def compute_performance(self, nav: pd.DataFrame, ret:pd.DataFrame):

@@ -58,8 +58,14 @@ class RankingWeightingSignals(WeightingScheme):
         list_signals : liste contenant les valeurs des signaux renvoyés par la stratégie
         type_
         """
+        weights_test: list = [0] * signals.shape[0]
         weights_ptf:list = []
         ranks: pd.Series = signals.rank(method="max", ascending=True).astype(float)
+        top_ranks:pd.Series = ranks.nlargest(5)
+        top_ranks_sum:pd.Series = top_ranks.sum()
+        index_ranks = ranks.isin(top_ranks)
         for i in range(len(ranks)):
+            if index_ranks[i]:
+                weights_test[i] = ranks[i]/top_ranks_sum
             weights_ptf.append(ranks[i] / ranks.sum())
         return weights_ptf
