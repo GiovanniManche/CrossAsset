@@ -100,7 +100,7 @@ la prime d'un point de vue historique
 writer = pd.ExcelWriter('Cross Asset Salary.xlsm')
 # A voir pour les rendements : est-ce qu'on coupe les x dernières valeurs ?
 # Cas des données annuelles
-if frequency == "yearly":
+if frequency != "daily":
     ret_action: pd.DataFrame = metrics_action.returns.iloc[:-1]
     ret_monetaire: pd.DataFrame = metrics_monetaire.returns.iloc[:-1]
 
