@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import Dict, Tuple
 
-from classes.strategies import Strategy, Momentum
+from classes.strategies import Strategy, Momentum, LowVol
 
 
 class Portfolio:
@@ -24,7 +24,7 @@ class Portfolio:
     YEARLY_LABEL = "yearly"
 
     PERIODICITY_LABELS = [DAILY_LABEL, WEEKLY_LABEL, MONTHLY_LABEL, QUARTERLY_LABEL, YEARLY_LABEL]
-    STRAT_LABELS = ["momentum", "low Vol"]
+    STRAT_LABELS = ["momentum", "low vol"]
     WEIGHTING_LABELS = ["equalweight", "ranking"]
 
     EQUITY_LABEL = "equity"
@@ -159,7 +159,7 @@ class Portfolio:
     def build_portfolio(self) -> pd.DataFrame:
         """
         Méthode  pour calculer la valeur du portefeuille
-        strategy : Momentum
+        strategy : Momentum ou Low Vol
         calculation_window : 20 jours
         isEquiponderated : False (==> méthode de ranking utilisé)
         """
@@ -245,11 +245,13 @@ class Portfolio:
             if strat == Portfolio.STRAT_LABELS[0]:
                 strategy_instance: Momentum = Momentum(returns_to_use,
                          weighting)
-                list_weight_strat:list = strategy_instance.get_position()
-
             # Ajouter un cas pour chaque stratégie
+            elif strat == Portfolio.STRAT_LABELS[1]:
+                strategy_instance: LowVol = LowVol(returns_to_use, weighting)
             else:
                 raise Exception("To be implemented")
+            
+            list_weight_strat:list = strategy_instance.get_position()
             if len(list_weight_strat) != len(list_weights_ptf):
                 raise Exception("Les séries de poids générés par les stratégies / le portefeuille doivent avoir la même longueur")
 
