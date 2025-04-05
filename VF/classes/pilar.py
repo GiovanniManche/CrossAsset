@@ -224,7 +224,7 @@ class Pilar:
             start_date = sorted_rebal_dates[i]
             end_date = sorted_rebal_dates[i+1]
             
-            # Sélection des dates entre deux rebalancement 
+            # Sélection des dates entre deux rebalancements 
             mask = (self.returns.index >= start_date) & (self.returns.index < end_date)
             dates_between = self.returns.index[mask]
             current_weights = rebal_weights.loc[start_date].values
@@ -232,7 +232,7 @@ class Pilar:
             # On assigne les poids initiaux à la date de rebalancement
             all_weights.loc[start_date] = current_weights
             
-            # Pour chaque date entre les rebalancement, on calcule la dérive
+            # Pour chaque date entre les rebalancements, on calcule la dérive
             prev_date = start_date
             for current_date in dates_between[1:]:  
                 # On récupère les rendements pour la période entre prev_date et current_date
