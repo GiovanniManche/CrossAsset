@@ -41,7 +41,7 @@ class Momentum(Strategy):
         """
         Calcule les parts dans le portefeuille à une date donnée.
         """
-        # Calcul du rendement sur la période (à vérifier si c'est bien ça qu'on utilise comme signal)
+        # Calcul du rendement sur la période
         signals_momentum: pd.Series = (1 + self.returns).prod() - 1
 
         # Cas où l'utilisateur souhaite réaliser une allocation par ranking
