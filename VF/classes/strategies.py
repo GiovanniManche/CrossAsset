@@ -22,7 +22,7 @@ classe Momentum
 """
 class Momentum(Strategy):
     """
-    Classe qui implémente une stratégie Momentum basée sur les rendements des actifs. Deux solutions sont proposés :
+    Classe qui implémente une stratégie Momentum basée sur les rendements des actifs. Deux solutions sont proposées :
         - on classe les actifs qui montent "du plus fort" au moins fort / qui baissent, et on alloue des poids en fonction du rang ;
         - on prend les actifs qui montent et leur allouons un poids "équipondéré"
 
